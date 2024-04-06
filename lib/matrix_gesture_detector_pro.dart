@@ -1,4 +1,7 @@
+library matrix_gesture_detector;
+
 import 'dart:math';
+
 import 'package:flutter/widgets.dart';
 
 typedef MatrixGestureDetectorCallback = void Function(
@@ -9,27 +12,26 @@ typedef MatrixGestureDetectorCallback = void Function(
 
 class MatrixGestureDetector extends StatefulWidget {
   final Widget child;
-  final MatrixGestureDetectorCallback onMatrixUpdate;
+  final bool clipChild;
   final bool shouldTranslate;
   final bool shouldScale;
   final bool shouldRotate;
-  final bool clipChild;
-  final Alignment focalPointAlignment;
-  final Function() onScaleStart;
-  final Function() onScalEnd;
+  final Alignment? focalPointAlignment;
+  final MatrixGestureDetectorCallback onMatrixUpdate;
+  final VoidCallback onScaleStart;
+  final VoidCallback onScaleEnd;
 
   MatrixGestureDetector({
-    Key? key,
     required this.child,
-    required this.onMatrixUpdate,
+    this.clipChild = true,
     this.shouldTranslate = true,
     this.shouldScale = true,
     this.shouldRotate = true,
-    this.clipChild = false,
-    this.focalPointAlignment = Alignment.center,
+    this.focalPointAlignment,
+    required this.onMatrixUpdate,
     required this.onScaleStart,
-    required this.onScalEnd,
-  }) : super(key: key);
+    required this.onScaleEnd,
+  });
 
   @override
   _MatrixGestureDetectorState createState() => _MatrixGestureDetectorState();
@@ -71,7 +73,7 @@ class _MatrixGestureDetectorState extends State<MatrixGestureDetector> {
   }
 
   void onScaleEnd(ScaleEndDetails details) {
-    widget.onScalEnd();
+    widget.onScaleEnd();
   }
 
   void onScaleUpdate(ScaleUpdateDetails details) {
