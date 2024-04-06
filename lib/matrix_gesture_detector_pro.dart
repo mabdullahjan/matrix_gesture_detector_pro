@@ -16,92 +16,114 @@ typedef MatrixGestureDetectorCallback = void Function(
 /// gestures by passing [shouldTranslate], [shouldScale] and [shouldRotate]
 /// parameters.
 ///
-class MatrixGestureDetector extends StatefulWidget {
-  /// [Matrix4] change notification callback
-  ///
-  final MatrixGestureDetectorCallback onMatrixUpdate;
-
-  /// The [child] contained by this detector.
-  ///
-  /// {@macro flutter.widgets.child}
-  ///
-  final Widget child;
-
-  /// Whether to detect translation gestures during the event processing.
-  ///
-  /// Defaults to true.
-  ///
-  final bool shouldTranslate;
-
-  /// Whether to detect scale gestures during the event processing.
-  ///
-  /// Defaults to true.
-  ///
-  final bool shouldScale;
-
-  /// Whether to detect rotation gestures during the event processing.
-  ///
-  /// Defaults to true.
-  ///
-  final bool shouldRotate;
-
-  /// Whether [ClipRect] widget should clip [child] widget.
-  ///
-  /// Defaults to true.
-  ///
-  final bool clipChild;
-
-  /// When set, it will be used for computing a "fixed" focal point
-  /// aligned relative to the size of this widget.
-  final Alignment? focalPointAlignment;
-
-  final VoidCallback onScalStart;
-  final VoidCallback onScalEnd;
-
-  const MatrixGestureDetector({
-    Key? key,
-    required this.onMatrixUpdate,
-    required this.child,
-    this.shouldTranslate = true,
-    this.shouldScale = true,
-    this.shouldRotate = true,
-    this.clipChild = true,
-    this.focalPointAlignment,
-    required this.onScalStart,
-    required this.onScalEnd,
-      
-  }) : super(key: key);
+class _MatrixGestureDetectorState extends State<MatrixGestureDetector> {
+  Matrix4 translationDeltaMatrix = Matrix4.identity();
+  Matrix4 scaleDeltaMatrix = Matrix4.identity();
+  Matrix4 rotationDeltaMatrix = Matrix4.identity();
+  Matrix4 matrix = Matrix4.identity();
 
   @override
-  _MatrixGestureDetectorState createState() => _MatrixGestureDetectorState();
-
-  ///
-  /// Compose the matrix from translation, scale and rotation matrices - you can
-  /// pass a null to skip any matrix from composition.
-  ///
-  /// If [matrix] is not null the result of the composing will be concatenated
-  /// to that [matrix], otherwise the identity matrix will be used.
-  ///
-  static Matrix4  compose(Matrix4 matrix, Matrix4? translationMatrix,
-      Matrix4? scaleMatrix, Matrix4? rotationMatrix) {
-    if (matrix == null) matrix = Matrix4.identity();
-    if (translationMatrix != null) matrix = translationMatrix * matrix;
-    if (scaleMatrix != null) matrix = scaleMatrix * matrix;
-    if (rotationMatrix != null) matrix = rotationMatrix * matrix;
-    return matrix;
+  Widget build(BuildContext context) {
+    Widget child =
+        widget.clipChild ? ClipRect(child: widget.child) : widget.child;
+    return GestureDetector(
+      onScaleStart: onScaleStart,
+      onScaleUpdate: onScaleUpdate,
+      onScaleEnd: onScaleEnd, // Added this line
+      child: child,
+    );
   }
 
-  ///
-  /// Decomposes [matrix] into [MatrixDecomposedValues.translation],
-  /// [MatrixDecomposedValues.scale] and [MatrixDecomposedValues.rotation] components.
-  ///
-  static MatrixDecomposedValues decomposeToValues(Matrix4 matrix) {
-    var array = matrix.applyToVector3Array([0, 0, 0, 1, 0, 0]);
-    Offset translation = Offset(array[0], array[1]);
-    Offset delta = Offset(array[3] - array[0], array[4] - array[1]);
-    double scale = delta.distance;
-    double rotation = delta.direction;
-    return MatrixDecomposedValues(translation, scale, rotation);
+  _ValueUpdater<Offset> translationUpdater = _ValueUpdater(
+    onUpdate: (oldVal, newVal) => newVal - (oldVal ?? Offset.zero),
+  );
+  _ValueUpdater<double> rotationUpdater = _ValueUpdater(
+    onUpdate: (oldVal, newVal) => newVal - (oldVal ?? 0),
+  );
+  _ValueUpdater<double> scaleUpdater = _ValueUpdater(
+    onUpdate: (oldVal, newVal) => newVal / (oldVal ?? 1),
+  );
+
+  void onScaleStart(ScaleStartDetails details) {
+    widget.onScaleStart();
+    translationUpdater.value = details.focalPoint;
+    rotationUpdater.value = double.nan;
+    scaleUpdater.value = 1.0;
+  }
+
+  void onScaleEnd(ScaleEndDetails details) {
+    widget.onScalEnd();
+  }
+
+  void onScaleUpdate(ScaleUpdateDetails details) {
+    widget.onScaleStart();
+    translationDeltaMatrix = Matrix4.identity();
+    scaleDeltaMatrix = Matrix4.identity();
+    rotationDeltaMatrix = Matrix4.identity();
+
+    // handle matrix translating
+    if (widget.shouldTranslate) {
+      Offset translationDelta = translationUpdater.update(details.focalPoint);
+      translationDeltaMatrix = _translate(translationDelta);
+      matrix = translationDeltaMatrix * matrix;
+    }
+
+    Offset? focalPoint;
+    if (widget.focalPointAlignment != null && context.size != null) {
+      focalPoint = widget.focalPointAlignment!.alongSize(context.size!);
+    } else {
+      RenderObject? renderObject = context.findRenderObject();
+      if (renderObject != null) {
+        RenderBox renderBox = renderObject as RenderBox;
+        focalPoint = renderBox.globalToLocal(details.focalPoint);
+      }
+    }
+
+    // handle matrix scaling
+    if (widget.shouldScale && details.scale != 1.0 && focalPoint != null) {
+      double scaleDelta = scaleUpdater.update(details.scale);
+      scaleDeltaMatrix = _scale(scaleDelta, focalPoint);
+      matrix = scaleDeltaMatrix * matrix;
+    }
+
+    // handle matrix rotating
+    if (widget.shouldRotate && details.rotation != 0.0) {
+      if (rotationUpdater.value == null || rotationUpdater.value!.isNaN) {
+        rotationUpdater.value = details.rotation;
+      } else {
+        if (focalPoint != null) {
+          double rotationDelta = rotationUpdater.update(details.rotation);
+          rotationDeltaMatrix = _rotate(rotationDelta, focalPoint);
+          matrix = rotationDeltaMatrix * matrix;
+        }
+      }
+    }
+
+    widget.onMatrixUpdate(
+        matrix, translationDeltaMatrix, scaleDeltaMatrix, rotationDeltaMatrix);
+  }
+
+  Matrix4 _translate(Offset translation) {
+    var dx = translation.dx;
+    var dy = translation.dy;
+
+    return Matrix4(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, dx, dy, 0, 1);
+  }
+
+  Matrix4 _scale(double scale, Offset focalPoint) {
+    var dx = (1 - scale) * focalPoint.dx;
+    var dy = (1 - scale) * focalPoint.dy;
+
+    return Matrix4(scale, 0, 0, 0, 0, scale, 0, 0, 0, 0, 1, 0, dx, dy, 0, 1);
+  }
+
+  Matrix4 _rotate(double angle, Offset focalPoint) {
+    var c = cos(angle);
+    var s = sin(angle);
+    var dx = (1 - c) * focalPoint.dx + s * focalPoint.dy;
+    var dy = (1 - c) * focalPoint.dy - s * focalPoint.dx;
+
+    return Matrix4(c, s, 0, 0, -s, c, 0, 0, 0, 0, 1, 0, dx, dy, 0, 1);
   }
 }
 
