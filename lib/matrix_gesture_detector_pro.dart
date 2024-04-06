@@ -64,12 +64,13 @@ class _MatrixGestureDetectorState extends State<MatrixGestureDetector> {
     onUpdate: (oldVal, newVal) => newVal / (oldVal ?? 1),
   );
 
-  void onScaleStart(ScaleStartDetails details) {
-    widget.onScaleStart();
-    translationUpdater.value = details.focalPoint;
-    rotationUpdater.value = double.nan;
-    scaleUpdater.value = 1.0;
-  }
+   
+void onScaleStart(ScaleStartDetails details) {
+  translationUpdater.value = details.focalPoint;
+  rotationUpdater.value = double.nan;
+  scaleUpdater.value = 1.0;
+  widget.onScaleStart(); // Make sure this method is defined in your widget
+}
 
   void onScaleEnd(ScaleEndDetails details) {
     widget.onScaleEnd();
