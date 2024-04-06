@@ -1,14 +1,13 @@
-library matrix_gesture_detector;
-
 import 'dart:math';
 
 import 'package:flutter/widgets.dart';
 
 typedef MatrixGestureDetectorCallback = void Function(
-    Matrix4 matrix,
-    Matrix4 translationDeltaMatrix,
-    Matrix4 scaleDeltaMatrix,
-    Matrix4 rotationDeltaMatrix);
+  Matrix4 matrix,
+  Matrix4 translationDeltaMatrix,
+  Matrix4 scaleDeltaMatrix,
+  Matrix4 rotationDeltaMatrix,
+);
 
 class MatrixGestureDetector extends StatefulWidget {
   final Widget child;
@@ -121,7 +120,11 @@ class _MatrixGestureDetectorState extends State<MatrixGestureDetector> {
     }
 
     widget.onMatrixUpdate(
-        matrix, translationDeltaMatrix, scaleDeltaMatrix, rotationDeltaMatrix);
+      matrix,
+      translationDeltaMatrix,
+      scaleDeltaMatrix,
+      rotationDeltaMatrix,
+    );
   }
 
   Matrix4 _translate(Offset translation) {
